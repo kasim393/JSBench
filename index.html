@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DSA Runner</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="titlebar">DSA Runner</header>
+      <main class="main">
+        <aside id="file-tree" class="file-tree">
+          <div class="file-tree-header">
+            <span>FILES</span>
+            <span class="tree-actions">
+              <button id="btn-new-file" title="New file">+📄</button>
+              <button id="btn-new-folder" title="New folder">+📁</button>
+              <button id="btn-refresh" title="Refresh">⟳</button>
+              <button id="btn-open-folder" title="Open folder">📂</button>
+            </span>
+          </div>
+          <div id="tree" class="tree"></div>
+        </aside>
+        <section class="editor-pane">
+          <div id="tabs" class="tabs"></div>
+          <div id="editor"></div>
+          <div class="toolbar">
+            <button id="btn-run">▶ Run</button>
+            <button id="btn-stop" disabled>■ Stop</button>
+            <button id="btn-save">💾 Save</button>
+            <span class="spacer"></span>
+            <span id="node-status" class="node-status"></span>
+          </div>
+          <div id="output-panel" class="output-panel">
+            <div class="output-header">OUTPUT <button id="btn-clear">Clear</button></div>
+            <pre id="output"></pre>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
