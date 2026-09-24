@@ -144,64 +144,143 @@ async function saveCurrent(refresh = true) {
   if (refresh) appendOutput(`▸ Saved ${tab.name}\n`, "sys");
 }
 
-// ---------- file tree ----------
+// ---------- file tree (VS Code style) ----------
+const expanded = new Set(); // normalized paths of expanded folders
+let sidebarWidth = 260;
+
+const ICONS = {
+  folderClosed: `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#d7a55b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 3.5c0-.6.4-1 1-1h3l1.2 1.4H13c.6 0 1 .4 1 1v5.6c0 .6-.4 1-1 1h-10.5c-.6 0-1-.4-1-1v-7z"/></svg>`,
+  folderOpen: `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#d7a55b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5c0-.6.4-1 1-1h3l1.2 1.4H13c.6 0 1 .4 1 1v1H1.5v-2.4z" fill="#d7a55b" fill-opacity="0.25"/><path d="M1.5 6.4h12.5l-1 4.2c-.1.5-.5.9-1 .9H3c-.6 0-1-.4-1-1l-.5-4.1z"/></svg>`,
+  file: `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#f0db4f" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5L12.5 5v9.5H4z"/><path d="M9 1.5V5h3.5"/></svg>`,
+};
+
+// chevron-right: rotates 90° via CSS when the folder is expanded
+const ICON_TWISTY = `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"/></svg>`;
+
+// swap the folder icon between closed/open glyphs
+function setFolderIcon(el, open) {
+  const icon = el.querySelector(":scope > .row .icon");
+  if (icon) icon.innerHTML = open ? ICONS.folderOpen : ICONS.folderClosed;
+}
 function joinPath(dir, name) {
   return dir.replace(/[\\/]+$/, "") + "\\" + name;
 }
+function autofitSidebar(force = false) {
+  const panel = document.getElementById("file-tree");
+  if (!panel || panel.classList.contains("hidden")) return;
+  if (panel.dataset.manual === "1" && !force) return;
+  const tree = document.getElementById("tree");
+  // temporarily remove ellipsis so rows measure to their full filename width
+  tree.classList.add("measuring");
+  const rows = [...tree.querySelectorAll(".row")];
+  let widest = 0;
+  for (const r of rows) {
+    // row width with its current indent + full filename
+    const w = r.offsetLeft + r.scrollWidth;
+    if (w > widest) widest = w;
+  }
+  tree.classList.remove("measuring");
+  const need = Math.min(520, Math.max(180, widest + 18));
+  sidebarWidth = need;
+  panel.style.width = need + "px";
+}
+
+
+function normPath(p) {
+  return (p ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function rowDepth(path) {
+  const ws = normPath(workspace);
+  const rel = normPath(path).slice(ws.length).replace(/^\/+/, "");
+  return Math.max(0, rel.split("/").filter(Boolean).length - 1);
+}
 
 async function ensureExpanded(el, path) {
-  let wrap = el.querySelector(":scope > .children");
-  if (!wrap) {
-    const entries = await invoke("list_dir", { path });
-    wrap = document.createElement("div");
-    wrap.className = "children";
-    entries.forEach((item) => makeItem(item, wrap));
-    el.appendChild(wrap);
-    el.classList.add("expanded");
-    const label = el.querySelector("span");
-    if (label) label.textContent = "▾ " + label.textContent.replace(/^[▸▾] /, "");
+  // tolerate stale DOM (nodes rendered before the children-container change):
+  // make sure a .children container exists, then fill + show it
+  if (!el.querySelector(":scope > .children")) {
+    const fresh = document.createElement("div");
+    fresh.className = "children";
+    el.appendChild(fresh);
   }
-  return wrap;
+  return toggleFolder(el, path, true);
 }
 
-async function toggleFolder(el, path) {
-  const existing = el.querySelector(":scope > .children");
-  if (existing) { existing.remove(); el.classList.remove("expanded"); return; }
-  el.classList.add("expanded");
-  const entries = await invoke("list_dir", { path });
-  const wrap = document.createElement("div");
-  wrap.className = "children";
-  entries.forEach((item) => makeItem(item, wrap));
-  el.appendChild(wrap);
+async function toggleFolder(el, path, expandOnly = false) {
+  const wrap = el.querySelector(":scope > .children");
+  const show = async (w) => {
+    el.classList.add("expanded");
+    expanded.add(normPath(el.dataset.path));
+    setFolderIcon(el, true);
+    if (!w.dataset.loaded) {
+      try {
+        const entries = await invoke("list_dir", { path });
+        entries.sort((x, y) => {
+          const xd = x.isDir ?? x.is_dir ?? false;
+          const yd = y.isDir ?? y.is_dir ?? false;
+          if (xd !== yd) return xd ? -1 : 1;
+          return x.name.toLowerCase().localeCompare(y.name.toLowerCase());
+        });
+        entries.forEach((item) => makeItem(item, w));
+        w.dataset.loaded = "1";
+      } catch (e) { appendOutput(e + "\n", "err"); }
+    }
+    autofitSidebar(false);
+  };
+  if (wrap) {
+    if (el.classList.contains("expanded") && !expandOnly) {
+      el.classList.remove("expanded");
+      expanded.delete(normPath(el.dataset.path));
+      setFolderIcon(el, false);
+      autofitSidebar(false);
+    } else { await show(wrap); }
+    return wrap;
+  }
+  return null;
 }
-
 function makeItem(item, parent) {
+  const isDir = item.isDir ?? item.is_dir ?? false;
   const el = document.createElement("div");
-  el.className = "item" + (item.isDir ? " folder" : "");
-  const label = document.createElement("span");
-  label.textContent = (item.isDir ? "▸ " : "📄 ") + item.name;
-  el.appendChild(label);
+  el.className = "node" + (isDir ? " folder" : " file");
   el.dataset.path = item.path;
-  el.onclick = (e) => {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.style.paddingLeft = (rowDepth(item.path) * 12 + 6) + "px";
+  const twisty = document.createElement("span");
+  twisty.className = "twisty";
+  twisty.innerHTML = isDir ? ICON_TWISTY : "";
+  const icon = document.createElement("span");
+  icon.className = "icon";
+  icon.innerHTML = isDir ? ICONS.folderClosed : ICONS.file;
+  const fname = document.createElement("span");
+  fname.className = "fname";
+  fname.textContent = item.name;
+  if (!isDir) fname.title = item.path;
+  row.append(twisty, icon, fname);
+  el.appendChild(row);
+  if (isDir) {
+    const kids = document.createElement("div");
+    kids.className = "children";
+    el.appendChild(kids);
+  }
+  row.onclick = (e) => {
     e.stopPropagation();
-    if (item.isDir) {
-      toggleFolder(el, item.path);
-      label.textContent = (el.classList.contains("expanded") ? "▾ " : "▸ ") + item.name;
-    } else {
-      document.querySelectorAll(".tree > .item").forEach((x) => x.classList.remove("selected"));
-      el.classList.add("selected");
+    if (isDir) { toggleFolder(el, item.path); }
+    else {
+      treeEl.querySelectorAll(".row").forEach((x) => x.classList.remove("selected"));
+      row.classList.add("selected");
       openFile(item.path);
     }
   };
-  el.oncontextmenu = (e) => {
+  row.oncontextmenu = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    showCtxMenu(e.clientX, e.clientY, item);
+    showCtxMenu(e.clientX, e.clientY, { ...item, isDir });
   };
   parent.appendChild(el);
   return el;
 }
-
 function showCtxMenu(x, y, item) {
   closeCtxMenu();
   const menu = document.createElement("div");
@@ -264,7 +343,7 @@ async function deleteEntry(item) {
   }
 }
 
-function promptNew(type, parentDir = null) {
+async function promptNew(type, parentDir = null) {
   const dir = parentDir ?? workspace;
   if (!dir) { appendOutput("▸ Open a folder first.\n", "sys"); return; }
   const existing = treeEl.querySelector(".new-input");
@@ -274,11 +353,12 @@ function promptNew(type, parentDir = null) {
   input.className = "new-input";
   input.placeholder = type === "file" ? "name.js" : "folder-name";
   // If creating inside a subfolder, expand it and place input under it
-  const hostEl = parentDir
-    ? (document.querySelector(`.item[data-path="${CSS.escape(dir)}"]`) ?? treeEl)
-    : treeEl;
-  const childrenWrap = parentDir ? ensureExpanded(hostEl, dir) : treeEl;
-  childrenWrap.appendChild(input);
+  let holder = treeEl;
+  if (parentDir) {
+    const hostEl = treeEl.querySelector('.node[data-path="' + CSS.escape(dir) + '"]');
+    if (hostEl) holder = (await ensureExpanded(hostEl, dir)) ?? treeEl;
+  }
+  (holder ?? treeEl).prepend(input);
 
   let settled = false; // guards against blur removing input during commit
 
@@ -322,13 +402,23 @@ async function refreshTree() {
   treeEl.innerHTML = "";
   try {
     const entries = await invoke("list_dir", { path: workspace });
+    entries.sort((x, y) => {
+      const xd = x.isDir ?? x.is_dir ?? false;
+      const yd = y.isDir ?? y.is_dir ?? false;
+      if (xd !== yd) return xd ? -1 : 1;
+      return x.name.toLowerCase().localeCompare(y.name.toLowerCase());
+    });
     entries.forEach((item) => makeItem(item, treeEl));
+    for (const p of [...expanded]) {
+      const nodes = [...treeEl.querySelectorAll(".node.folder")];
+      const el = nodes.find((n) => normPath(n.dataset.path) === p);
+      if (el) await ensureExpanded(el, el.dataset.path);
+    }
+    autofitSidebar(true);
   } catch (e) {
-    appendOutput(`${e}\n`, "err");
+    appendOutput(e + "\n", "err");
   }
 }
-
-// ---------- session persistence (Phase 7) ----------
 function saveSession() {
   if (!workspace) return;
   invoke("save_session", {
@@ -357,6 +447,31 @@ async function init() {
   $("btn-new-file").onclick = () => promptNew("file");
   $("btn-new-folder").onclick = () => promptNew("folder");
   $("btn-refresh").onclick = refreshTree;
+  const panel = $("file-tree");
+  const resizer = $("sidebar-resizer");
+  panel.style.width = sidebarWidth + "px";
+  $("btn-sidebar").onclick = () => {
+    panel.classList.toggle("hidden");
+    if (resizer) resizer.classList.toggle("hidden");
+  };
+  if (resizer) {
+    resizer.onmousedown = (e) => {
+      e.preventDefault();
+      panel.dataset.manual = "1";
+      const startX = e.clientX, startW = panel.offsetWidth;
+      const move = (ev) => {
+        sidebarWidth = Math.min(520, Math.max(160, startW + ev.clientX - startX));
+        panel.style.width = sidebarWidth + "px";
+      };
+      const up = () => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+    };
+    resizer.ondblclick = () => { delete panel.dataset.manual; autofitSidebar(true); };
+  }
   $("btn-open-folder").onclick = async () => {
     try {
       const dir = await invoke("open_workspace_dialog");

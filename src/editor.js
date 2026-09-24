@@ -1,9 +1,9 @@
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { searchKeymap, highlightSelectionMatches, search } from "@codemirror/search";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { bracketMatching, indentOnInput, indentUnit } from "@codemirror/language";
 
@@ -19,6 +19,10 @@ export function baseExtensions() {
     if (update.docChanged && handlers.onChange) handlers.onChange();
   });
   return [
+    lineNumbers(),
+    highlightActiveLineGutter(),
+    highlightActiveLine(),
+    drawSelection(),
     history(),
     indentOnInput(),
     bracketMatching(),
@@ -28,6 +32,7 @@ export function baseExtensions() {
     indentUnit.of("  "),
     javascript(),
     oneDark,
+    search({ top: true }),
     keymap.of([
       { key: "Ctrl-Enter", run: () => { handlers.onRun?.(); return true; } },
       { key: "Ctrl-s", run: () => { handlers.onSave?.(); return true; } },

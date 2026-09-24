@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "DSA Runner",
+        "title": "JSBench",
         "width": 1100,
         "height": 750,
         "minWidth": 700,

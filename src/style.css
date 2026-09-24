@@ -60,7 +60,20 @@ html, body, #app {
   padding: 0 2px;
 }
 .file-tree-header button:hover { color: var(--fg); }
-.tree-actions { display: flex; gap: 2px; }
+.tree-actions { display: flex; gap: 4px; align-items: center; }
+.tree-actions button {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tree-actions button:hover { color: var(--fg); background: var(--bg-panel); }
+.tree-actions button svg { width: 24px; height: 24px; display: block; }
 
 .tree .new-input {
   margin: 2px 6px;
@@ -93,23 +106,6 @@ html, body, #app {
 
 .tree { flex: 1; overflow: auto; padding: 4px 0; }
 
-.tree .item {
-  padding: 3px 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tree .item:hover { background: var(--bg-panel); }
-.tree .item.selected { background: #094771; }
-.tree .item.folder { font-weight: 600; }
-.tree .item { display: flex; align-items: center; }
-.tree .item .children { padding-left: 16px; }
-.tree .item.folder { cursor: pointer; }
-.tree .children { display: block; }
-.tree .item.folder > span:first-child { user-select: none; }
-.tree .children .item { position: relative; }
-
 .editor-pane {
   flex: 1;
   display: flex;
@@ -141,9 +137,68 @@ html, body, #app {
 .tab .close:hover { color: var(--fg); }
 .tab .dirty { color: var(--accent); }
 
+/* ---------- CodeMirror gutter + search panel ---------- */
 #editor { flex: 1; min-height: 0; overflow: hidden; }
 #editor .cm-editor { height: 100%; }
 #editor .cm-editor.cm-focused { outline: none; }
+#editor .cm-scroller { font-family: Consolas, "Cascadia Mono", "Courier New", monospace; font-size: 13.5px; }
+
+/* line-number gutter */
+#editor .cm-gutters {
+  background: var(--bg-alt);
+  color: #6b6b76;
+  border-right: 1px solid var(--border);
+  user-select: none;
+}
+#editor .cm-lineNumbers .cm-gutterElement { padding: 0 12px 0 14px; min-width: 34px; }
+#editor .cm-activeLineGutter { background: var(--bg-panel); color: var(--fg); }
+#editor .cm-activeLine { background: rgba(255, 255, 255, 0.035); }
+/* current-line gutter when the editor is not focused is dimmed by CM */
+#editor .cm-gutterElement { line-height: 1.55; }
+
+/* Ctrl+F search / replace panel */
+#editor .cm-panels { background: var(--bg-alt); color: var(--fg); }
+#editor .cm-panels.cm-panels-top { border-bottom: 1px solid var(--border); }
+#editor .cm-panel.cm-search {
+  padding: 6px 8px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+#editor .cm-panel.cm-search input,
+#editor .cm-panel.cm-search button {
+  background: var(--bg-panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-size: 12px;
+  outline: none;
+}
+#editor .cm-panel.cm-search input:focus { border-color: var(--accent); }
+#editor .cm-panel.cm-search button { cursor: pointer; }
+#editor .cm-panel.cm-search button:hover { border-color: var(--accent); color: var(--accent); }
+#editor .cm-panel.cm-search label { color: var(--fg-dim); display: inline-flex; align-items: center; gap: 3px; }
+#editor .cm-searchMatch { background: rgba(78, 201, 176, 0.25); outline: 1px solid rgba(78, 201, 176, 0.5); }
+#editor .cm-searchMatch.cm-searchMatch-selected { background: var(--accent); color: #1e1e1e; }
+#editor .cm-panel.cm-search [name="close"] {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  border: none;
+  background: none;
+  font-size: 15px;
+  padding: 0 4px;
+}
+#editor .cm-panel.cm-search [name="close"]:hover { color: var(--error); }
+
+/* selection highlight */
+#editor .cm-selectionBackground,
+#editor .cm-content ::selection { background: #264f78 !important; }
+#editor .cm-cursor { border-left-color: var(--accent); }
 
 .toolbar {
   display: flex;
@@ -210,3 +265,84 @@ html, body, #app {
 #output .err { color: var(--error); }
 #output .ok { color: var(--fg); }
 #output .sys { color: var(--fg-dim); font-style: italic; }
+
+/* ---------- sidebar + resizer ---------- */
+.file-tree { width: 260px; flex: none; min-width: 160px; max-width: 520px; }
+.file-tree.hidden { display: none; }
+.sidebar-resizer { width: 5px; flex: none; cursor: col-resize; background: transparent; }
+.sidebar-resizer:hover { background: var(--accent); opacity: 0.6; }
+.sidebar-resizer.hidden { display: none; }
+
+/* ---------- file tree (VS Code style) ---------- */
+.tree { overflow-x: auto; }
+.tree .node { display: block; }
+.tree .node .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tree .node .row:hover { background: var(--bg-panel); }
+.tree .node .row.selected { background: #094771; }
+
+/* chevron: points right when collapsed, rotates down when expanded */
+.tree .node .row .twisty {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+}
+.tree .node .row .twisty svg { width: 18px; height: 18px; display: block; transition: transform 0.12s ease; }
+.tree .node.expanded > .row .twisty svg { transform: rotate(90deg); }
+.tree .node.expanded > .row .twisty { color: var(--fg); }
+
+/* file / folder glyphs */
+.tree .node .row .icon { flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.tree .node .row .icon svg { width: 20px; height: 20px; display: block; }
+
+.tree .node .row .fname { overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; min-width: 0; }
+.tree .node.folder > .row .fname { font-weight: 600; }
+.tree .node > .children { display: none; }
+.tree .node.expanded > .children { display: block; }
+
+/* measuring mode: let rows size to the full filename so autofit can measure them */
+.tree.measuring { width: max-content !important; }
+.tree.measuring .row { width: max-content; }
+.tree.measuring .fname { overflow: visible; text-overflow: clip; flex: none; }
+
+/* ---------- themed scrollbars ---------- */
+/* Chromium / WebView2 — also styles CodeMirror's .cm-scroller */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #43434c;
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: #5a5a66; background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+.tree::-webkit-scrollbar-thumb { background: #4c4c55; background-clip: padding-box; }
+.tree::-webkit-scrollbar-thumb:hover { background: var(--accent); background-clip: padding-box; }
+/* Firefox fallback */
+* { scrollbar-width: thin; scrollbar-color: #4c4c55 transparent; }
+
+/* ---------- titlebar ---------- */
+.titlebar { display: flex; align-items: center; }
+.titlebar button {
+  background: none;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  margin-right: 10px;
+  padding: 3px 7px;
+  border-radius: 4px;
+}
+.titlebar button:hover { color: var(--accent); background: var(--bg-panel); }

@@ -30,6 +30,7 @@ struct NodeStatus {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Entry {
     name: String,
     path: String,
@@ -262,7 +263,7 @@ fn list_dir(path: String) -> Result<Vec<Entry>, String> {
             is_dir: meta.is_dir(),
         });
     }
-    entries.sort_by(|a, b| match (b.is_dir, a.is_dir) {
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
         (true, false) => std::cmp::Ordering::Less,
         (false, true) => std::cmp::Ordering::Greater,
         _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
