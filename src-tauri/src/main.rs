@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -61,34 +61,11 @@ fn node_status() -> NodeStatus {
     }
 }
 
-/// Spawn `node <path>` with an optional stdin payload.
-/// The payload is written on a side thread so a program that never reads
-/// stdin cannot stall the caller; dropping the pipe afterwards sends EOF.
-fn spawn_node(node: PathBuf, path: &str, input: Option<String>) -> Result<Child, String> {
-    let stdin_data = input.filter(|s| !s.is_empty());
-    let mut child = Command::new(node)
-        .arg(path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .stdin(if stdin_data.is_some() { Stdio::piped() } else { Stdio::null() })
-        .spawn()
-        .map_err(|e| format!("Failed to spawn node: {}", e))?;
-    if let Some(data) = stdin_data {
-        if let Some(mut pipe) = child.stdin.take() {
-            std::thread::spawn(move || {
-                let _ = pipe.write_all(data.as_bytes());
-            });
-        }
-    }
-    Ok(child)
-}
-
 #[tauri::command]
 fn run_js(
     app: tauri::AppHandle,
     path: String,
     timeout_ms: Option<u64>,
-    input: Option<String>,
     proc: State<ProcHandle>,
 ) -> Result<u64, String> {
     let node = find_node()
@@ -109,7 +86,13 @@ fn run_js(
         }
     }
 
-    let mut child = spawn_node(node, &path, input)?;
+    let mut child = Command::new(node)
+        .arg(&path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn node: {}", e))?;
 
     let stdout_pipe = child.stdout.take();
     let stderr_pipe = child.stderr.take();
@@ -393,68 +376,4 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Read;
-
-    fn tmp_script(name: &str, src: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join("jsbench-tests");
-        fs::create_dir_all(&dir).unwrap();
-        let p = dir.join(name);
-        fs::write(&p, src).unwrap();
-        p
-    }
-
-    // Drain stdout/stderr until the child exits (test outputs are tiny).
-    fn collect(mut child: Child) -> (String, String, Option<i32>) {
-        let mut out = String::new();
-        let mut err = String::new();
-        if let Some(mut p) = child.stdout.take() {
-            let _ = p.read_to_string(&mut out);
-        }
-        if let Some(mut p) = child.stderr.take() {
-            let _ = p.read_to_string(&mut err);
-        }
-        let code = child.wait().unwrap().code();
-        (out, err, code)
-    }
-
-    #[test]
-    fn stdin_payload_reaches_child() {
-        let Some(node) = find_node() else { return }; // skip when Node.js isn't installed
-        let script = tmp_script(
-            "stdin_sum.js",
-            r#"const chunks = [];
-process.stdin.on("data", (c) => chunks.push(c));
-process.stdin.on("end", () => {
-  const lines = chunks.toString().trim().split(/\r?\n/);
-  const sum = lines[1].split(" ").map(Number).reduce((a, b) => a + b, 0);
-  console.log("n=" + lines[0] + " sum=" + sum);
-});
-"#,
-        );
-        let child = spawn_node(node, script.to_str().unwrap(), Some("5\n1 2 3 4 5".into())).unwrap();
-        let (out, err, code) = collect(child);
-        assert_eq!(code, Some(0), "stderr: {err}");
-        assert_eq!(out.trim(), "n=5 sum=15");
-    }
-
-    #[test]
-    fn empty_input_gives_child_eof() {
-        let Some(node) = find_node() else { return };
-        let script = tmp_script(
-            "stdin_empty.js",
-            r#"let n = 0;
-process.stdin.on("data", () => n++);
-process.stdin.on("end", () => console.log("end " + n));
-"#,
-        );
-        let child = spawn_node(node, script.to_str().unwrap(), Some(String::new())).unwrap();
-        let (out, err, code) = collect(child);
-        assert_eq!(code, Some(0), "stderr: {err}");
-        assert_eq!(out.trim(), "end 0");
-    }
 }
