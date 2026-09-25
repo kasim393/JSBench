@@ -59,6 +59,11 @@ Detected from PATH. Override with the `JSBENCH_NODE_PATH` environment variable.
 
 - `Ctrl+Enter` — Run current file
 - `Ctrl+S` — Save
+- `Ctrl+B` — Toggle the sidebar
+- `Ctrl+J` — Clear the output panel
+- `Ctrl+=` / `Ctrl++` — Increase font size
+- `Ctrl+-` — Decrease font size
+- `Ctrl+0` — Reset font size
 
 ## Project docs
 

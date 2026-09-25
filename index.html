@@ -8,16 +8,16 @@
   </head>
   <body>
     <div id="app">
-      <header class="titlebar"><button id="btn-sidebar" title="Toggle file explorer">☰</button><span>JSBench</span></header>
+      <header class="titlebar"><button id="btn-sidebar" title="Toggle file explorer (Ctrl+B)">☰</button><span>JSBench</span></header>
       <main class="main">
         <aside id="file-tree" class="file-tree">
           <div class="file-tree-header">
             <span>FILES</span>
             <span class="tree-actions">
-              <button id="btn-new-file" title="New file"><svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/><path d="M6.5 9.2h4M8.5 7.2v4"/></svg></button>
-              <button id="btn-new-folder" title="New folder"><svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5c0-.8.7-1.5 1.5-1.5h3l1.2 1.5H13c.8 0 1.5.7 1.5 1.5v5c0 .8-.7 1.5-1.5 1.5H3c-.8 0-1.5-.7-1.5-1.5v-6z"/><path d="M7.5 8.7h4M9.5 6.7v4"/></svg></button>
-              <button id="btn-refresh" title="Refresh"><svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 1.5v3h-3"/></svg></button>
-              <button id="btn-open-folder" title="Open folder"><svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5c0-.8.7-1.5 1.5-1.5h3l1.2 1.5H13c.8 0 1.5.7 1.5 1.5v.5h-12v-1.5z"/><path d="M1.5 6.5h12V11c0 .8-.7 1.5-1.5 1.5H3c-.8 0-1.5-.7-1.5-1.5v-4.5z"/></svg></button>
+              <button id="btn-new-file" title="New file"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/><path d="M6.5 9.2h4M8.5 7.2v4"/></svg></button>
+              <button id="btn-new-folder" title="New folder"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5c0-.8.7-1.5 1.5-1.5h3l1.2 1.5H13c.8 0 1.5.7 1.5 1.5v5c0 .8-.7 1.5-1.5 1.5H3c-.8 0-1.5-.7-1.5-1.5v-6z"/><path d="M7.5 8.7h4M9.5 6.7v4"/></svg></button>
+              <button id="btn-refresh" title="Refresh"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 1.5v3h-3"/></svg></button>
+              <button id="btn-open-folder" title="Open folder"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5c0-.8.7-1.5 1.5-1.5h3l1.2 1.5H13c.8 0 1.5.7 1.5 1.5v.5h-12v-1.5z"/><path d="M1.5 6.5h12V11c0 .8-.7 1.5-1.5 1.5H3c-.8 0-1.5-.7-1.5-1.5v-4.5z"/></svg></button>
             </span>
           </div>
           <div id="tree" class="tree"></div>
@@ -34,7 +34,7 @@
             <span id="node-status" class="node-status"></span>
           </div>
           <div id="output-panel" class="output-panel">
-            <div class="output-header">OUTPUT <button id="btn-clear">Clear</button></div>
+            <div class="output-header">OUTPUT <button id="btn-clear" title="Clear output (Ctrl+J)">Clear</button></div>
             <pre id="output"></pre>
           </div>
         </section>

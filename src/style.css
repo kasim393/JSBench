@@ -7,6 +7,8 @@
   --fg-dim: #858585;
   --accent: #4ec9b0;
   --error: #f48771;
+  --editor-font-size: 13.5px;
+  --output-font-size: 12px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -73,7 +75,7 @@ html, body, #app {
   justify-content: center;
 }
 .tree-actions button:hover { color: var(--fg); background: var(--bg-panel); }
-.tree-actions button svg { width: 24px; height: 24px; display: block; }
+.tree-actions button svg { width: 18px; height: 18px; display: block; }
 
 .tree .new-input {
   margin: 2px 6px;
@@ -141,7 +143,7 @@ html, body, #app {
 #editor { flex: 1; min-height: 0; overflow: hidden; }
 #editor .cm-editor { height: 100%; }
 #editor .cm-editor.cm-focused { outline: none; }
-#editor .cm-scroller { font-family: Consolas, "Cascadia Mono", "Courier New", monospace; font-size: 13.5px; }
+#editor .cm-scroller { font-family: Consolas, "Cascadia Mono", "Courier New", monospace; font-size: var(--editor-font-size); }
 
 /* line-number gutter */
 #editor .cm-gutters {
@@ -258,7 +260,7 @@ html, body, #app {
   overflow: auto;
   padding: 8px 12px;
   font-family: Consolas, "Courier New", monospace;
-  font-size: 12px;
+  font-size: var(--output-font-size);
   white-space: pre-wrap;
   word-break: break-word;
 }

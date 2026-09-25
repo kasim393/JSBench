@@ -29,6 +29,10 @@ function appendOutput(text, cls = "ok") {
   outputEl.scrollTop = outputEl.scrollHeight;
 }
 
+function clearOutput() {
+  outputEl.innerHTML = "";
+}
+
 // ---------- run / stop ----------
 async function runCurrent() {
   const tab = activeFile();
@@ -427,6 +431,65 @@ function saveSession() {
   }).catch(() => {});
 }
 
+// ---------- global shortcuts (VS Code style) ----------
+const BASE_EDITOR_FONT = 13.5; // px — matches :root default in style.css
+const BASE_OUTPUT_FONT = 12;   // px — matches :root default in style.css
+const FONT_SCALE_MIN = 0.6;
+const FONT_SCALE_MAX = 2.4;
+const FONT_SCALE_STEP = 0.1;
+const FONT_SCALE_KEY = "jsbench.fontScale";
+
+let fontScale = 1;
+try {
+  const saved = parseFloat(localStorage.getItem(FONT_SCALE_KEY));
+  if (Number.isFinite(saved)) fontScale = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, saved));
+} catch { /* storage unavailable */ }
+
+function applyFontScale() {
+  const root = document.documentElement;
+  root.style.setProperty("--editor-font-size", parseFloat((BASE_EDITOR_FONT * fontScale).toFixed(2)) + "px");
+  root.style.setProperty("--output-font-size", parseFloat((BASE_OUTPUT_FONT * fontScale).toFixed(2)) + "px");
+}
+
+let fontScaleSaveTimer = 0;
+function changeFontScale(delta) {
+  fontScale = Math.round(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, fontScale + delta)) * 10) / 10;
+  applyFontScale();
+  // debounce so holding the key doesn't spam storage writes
+  clearTimeout(fontScaleSaveTimer);
+  fontScaleSaveTimer = setTimeout(() => {
+    try { localStorage.setItem(FONT_SCALE_KEY, String(fontScale)); } catch { /* ignore */ }
+  }, 300);
+}
+
+function resetFontScale() {
+  fontScale = 1;
+  applyFontScale();
+  try { localStorage.setItem(FONT_SCALE_KEY, "1"); } catch { /* ignore */ }
+}
+
+applyFontScale(); // apply persisted size before the editor is created
+
+function toggleSidebar() {
+  $("file-tree").classList.toggle("hidden");
+  const resizer = $("sidebar-resizer");
+  if (resizer) resizer.classList.toggle("hidden");
+}
+
+// registered in the capture phase so these win over CodeMirror's own keymap
+window.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.altKey || (!e.ctrlKey && !e.metaKey)) return;
+  const key = e.key.toLowerCase(); // "+" / "-" / "=" unaffected; handles CapsLock
+  let handled = true;
+  if (key === "b") toggleSidebar();                                          // Ctrl+B — toggle sidebar
+  else if (key === "j") clearOutput();                                       // Ctrl+J — clear output
+  else if (key === "+" || key === "=") changeFontScale(FONT_SCALE_STEP);     // Ctrl+= / Ctrl++ — bigger font
+  else if (key === "-" || key === "_") changeFontScale(-FONT_SCALE_STEP);    // Ctrl+- — smaller font
+  else if (key === "0") resetFontScale();                                    // Ctrl+0 — reset font size
+  else handled = false;
+  if (handled) { e.preventDefault(); e.stopPropagation(); }
+}, true);
+
 // ---------- init ----------
 async function init() {
   await setupRunEvents();
@@ -443,17 +506,14 @@ async function init() {
   $("btn-run").onclick = runCurrent;
   $("btn-stop").onclick = stopRun;
   $("btn-save").onclick = () => saveCurrent();
-  $("btn-clear").onclick = () => (outputEl.innerHTML = "");
+  $("btn-clear").onclick = clearOutput;
   $("btn-new-file").onclick = () => promptNew("file");
   $("btn-new-folder").onclick = () => promptNew("folder");
   $("btn-refresh").onclick = refreshTree;
   const panel = $("file-tree");
   const resizer = $("sidebar-resizer");
   panel.style.width = sidebarWidth + "px";
-  $("btn-sidebar").onclick = () => {
-    panel.classList.toggle("hidden");
-    if (resizer) resizer.classList.toggle("hidden");
-  };
+  $("btn-sidebar").onclick = toggleSidebar;
   if (resizer) {
     resizer.onmousedown = (e) => {
       e.preventDefault();
