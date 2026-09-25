@@ -234,7 +234,8 @@ html, body, #app {
   background: var(--bg);
 }
 
-.output-header {
+.output-header,
+.input-header {
   padding: 4px 12px;
   font-size: 11px;
   letter-spacing: 1px;
@@ -246,7 +247,8 @@ html, body, #app {
   align-items: center;
   user-select: none;
 }
-.output-header button {
+.output-header button,
+.input-header button {
   background: none;
   border: none;
   color: var(--fg-dim);
@@ -254,6 +256,31 @@ html, body, #app {
   font-size: 11px;
 }
 .output-header button:hover { color: var(--fg); }
+
+/* ---------- input (stdin) panel ---------- */
+.input-panel {
+  display: flex;
+  flex-direction: column;
+  height: 90px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.input-panel.collapsed { height: auto; }
+.input-panel.collapsed textarea { display: none; }
+.input-panel textarea {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: var(--output-font-size);
+  padding: 6px 12px;
+  overflow: auto;
+}
+.input-actions { display: flex; gap: 8px; align-items: center; }
 
 #output {
   flex: 1;

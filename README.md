@@ -17,6 +17,8 @@ Tauri 2 + Rust + vanilla JS + CodeMirror 6, executed with your installed Node.js
   guards against infinite loops
 - **Persistence** — workspace, open tabs, active file, and window size/position
   are restored on launch
+- **INPUT (stdin)** — collapsible input panel; its text is piped to the
+  program's stdin when you run (HackerRank/Codeforces-style problems)
 - **Portable** — single 8 MB exe; config lives next to the binary when a
   `config/` folder is present, otherwise in `%APPDATA%\JSBench`
 

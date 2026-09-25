@@ -7,6 +7,7 @@ const editorEl = $("editor");
 const outputEl = $("output");
 const treeEl = $("tree");
 const tabsEl = $("tabs");
+const inputEl = $("input-text");
 
 // ---------- state ----------
 let view; // CodeMirror instance
@@ -43,7 +44,7 @@ async function runCurrent() {
   $("btn-run").disabled = true;
   $("btn-stop").disabled = false;
   try {
-    currentRunId = await invoke("run_js", { path: tab.path, timeoutMs: 10000 });
+    currentRunId = await invoke("run_js", { path: tab.path, timeoutMs: 10000, input: inputEl.value });
   } catch (e) {
     appendOutput(`${e}\n`, "err");
     running = false;
@@ -489,6 +490,38 @@ window.addEventListener("keydown", (e) => {
   else handled = false;
   if (handled) { e.preventDefault(); e.stopPropagation(); }
 }, true);
+
+// ---------- input (stdin) panel ----------
+const INPUT_TEXT_KEY = "jsbench.inputText";
+const INPUT_COLLAPSED_KEY = "jsbench.inputCollapsed";
+const inputPanel = $("input-panel");
+
+function setInputCollapsed(collapsed) {
+  inputPanel.classList.toggle("collapsed", collapsed);
+  const btn = $("btn-input-toggle");
+  btn.textContent = collapsed ? "⌄" : "⌃";
+  btn.title = collapsed ? "Expand input (stdin)" : "Collapse input (stdin)";
+  try { localStorage.setItem(INPUT_COLLAPSED_KEY, collapsed ? "1" : "0"); } catch { /* ignore */ }
+}
+
+let inputSaveTimer = 0;
+function persistInputText() {
+  clearTimeout(inputSaveTimer);
+  inputSaveTimer = setTimeout(() => {
+    try { localStorage.setItem(INPUT_TEXT_KEY, inputEl.value); } catch { /* ignore */ }
+  }, 300);
+}
+
+// restore persisted input + panel state
+try {
+  const saved = localStorage.getItem(INPUT_TEXT_KEY);
+  if (saved !== null) inputEl.value = saved;
+  setInputCollapsed(localStorage.getItem(INPUT_COLLAPSED_KEY) === "1");
+} catch { setInputCollapsed(false); }
+
+$("btn-input-toggle").onclick = () => setInputCollapsed(!inputPanel.classList.contains("collapsed"));
+$("btn-input-clear").onclick = () => { inputEl.value = ""; persistInputText(); };
+inputEl.addEventListener("input", persistInputText);
 
 // ---------- init ----------
 async function init() {

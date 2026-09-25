@@ -33,6 +33,16 @@
             <span class="spacer"></span>
             <span id="node-status" class="node-status"></span>
           </div>
+          <div id="input-panel" class="input-panel">
+            <div class="input-header">
+              <span>INPUT</span>
+              <span class="input-actions">
+                <button id="btn-input-clear" title="Clear input">Clear</button>
+                <button id="btn-input-toggle" title="Collapse input (stdin)">⌃</button>
+              </span>
+            </div>
+            <textarea id="input-text" placeholder="stdin input — e.g.&#10;5&#10;1 2 3 4 5" spellcheck="false"></textarea>
+          </div>
           <div id="output-panel" class="output-panel">
             <div class="output-header">OUTPUT <button id="btn-clear" title="Clear output (Ctrl+J)">Clear</button></div>
             <pre id="output"></pre>
