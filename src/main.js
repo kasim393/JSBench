@@ -125,11 +125,21 @@ function switchTab(i) {
 }
 
 function closeTab(i) {
+  const closingActive = i === activeTab;
+  // Persist the live editor state only into a tab that survives the close.
+  // This must happen before the splice/index shift, and the closed tab's
+  // content must never be written into whichever tab becomes active.
+  if (!closingActive && activeTab >= 0) tabs[activeTab].state = view.state;
   tabs.splice(i, 1);
+  // Re-point activeTab at the same logical tab after index shifts
+  if (!closingActive && activeTab > i) activeTab--;
   if (activeTab >= tabs.length) activeTab = tabs.length - 1;
-  const cur = tabs[activeTab];
-  if (cur) switchTab(activeTab);
-  else {
+  if (activeTab >= 0) {
+    // Only re-set the view when the active tab actually changed (closing it);
+    // otherwise the view already shows the surviving active tab.
+    if (closingActive) view.setState(tabs[activeTab].state);
+    view.focus();
+  } else {
     activeTab = -1;
     view.setState(EditorState.create({ doc: "", extensions: baseExtensions() }));
   }
