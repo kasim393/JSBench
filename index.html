@@ -7,12 +7,33 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <div id="app">
-      <header class="titlebar"><button id="btn-sidebar" title="Toggle file explorer (Ctrl+B)">☰</button><span>JSBench</span></header>
+    <div id="app" class="app-frame">
+      <header class="titlebar" data-tauri-drag-region>
+        <button id="btn-sidebar" class="tb-btn" title="Toggle file explorer (Ctrl+B)" aria-label="Toggle file explorer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg></button>
+        <span class="brand" data-tauri-drag-region>
+          <svg class="brand-mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 2.6c-1.6 0-2.1.8-2.1 2v1.5c0 .9-.4 1.3-1.1 1.6.7.3 1.1.7 1.1 1.6v1.5c0 1.2.5 2 2.1 2"/><path d="M9.8 2.6c1.6 0 2.1.8 2.1 2v1.5c0 .9.4 1.3 1.1 1.6-.7.3-1.1.7-1.1 1.6v1.5c0 1.2-.5 2-2.1 2"/></svg>
+          <span class="brand-name">JSBench</span>
+        </span>
+        <span class="tb-doc" data-tauri-drag-region>
+          <span id="tb-workspace" class="tb-scope">no workspace</span>
+          <span class="tb-slash">—</span>
+          <span id="tb-file" class="tb-file">untitled</span>
+        </span>
+        <span class="titlebar-spacer" data-tauri-drag-region></span>
+        <button id="btn-theme" class="tb-btn" title="Toggle light / dark theme" aria-label="Toggle light or dark theme">
+          <svg class="icon-sun" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.4v1.6M8 13v1.6M1.4 8h1.6M13 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1"/></svg>
+          <svg class="icon-moon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.2 9.7A5.4 5.4 0 0 1 6.3 2.8a5.4 5.4 0 1 0 6.9 6.9z"/></svg>
+        </button>
+        <span class="win-controls">
+          <button id="win-min" class="win-dot dot-min" title="Minimize" aria-label="Minimize"><svg viewBox="0 0 10 10"><path d="M2 5h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+          <button id="win-max" class="win-dot dot-max" title="Maximize" aria-label="Maximize"><svg viewBox="0 0 10 10"><rect x="2.1" y="2.1" width="5.8" height="5.8" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button>
+          <button id="win-close" class="win-dot dot-close" title="Close" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M2.6 2.6l4.8 4.8M7.4 2.6l-4.8 4.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+        </span>
+      </header>
       <main class="main">
         <aside id="file-tree" class="file-tree">
           <div class="file-tree-header">
-            <span>FILES</span>
+            <span class="section-label">EXPLORER</span>
             <span class="tree-actions">
               <button id="btn-new-file" title="New file"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/><path d="M6.5 9.2h4M8.5 7.2v4"/></svg></button>
               <button id="btn-new-folder" title="New folder"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5c0-.8.7-1.5 1.5-1.5h3l1.2 1.5H13c.8 0 1.5.7 1.5 1.5v5c0 .8-.7 1.5-1.5 1.5H3c-.8 0-1.5-.7-1.5-1.5v-6z"/><path d="M7.5 8.7h4M9.5 6.7v4"/></svg></button>
@@ -25,13 +46,14 @@
         <div id="sidebar-resizer" class="sidebar-resizer" title="Drag to resize"></div>
         <section class="editor-pane">
           <div id="tabs" class="tabs"></div>
+          <div id="breadcrumb" class="breadcrumb"></div>
           <div id="editor"></div>
           <div class="toolbar">
-            <button id="btn-run">▶ Run</button>
-            <button id="btn-stop" disabled>■ Stop</button>
-            <button id="btn-save">💾 Save</button>
+            <button id="btn-run" class="primary" title="Run (Ctrl+Enter)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.6 2.7v10.6L13 8z"/></svg><span>Run</span></button>
+            <button id="btn-stop" class="danger" disabled title="Stop the running process"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4.6" y="4.6" width="6.8" height="6.8" rx="1.2"/></svg><span>Stop</span></button>
+            <button id="btn-save" class="ghost" title="Save (Ctrl+S)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.6 2.6h8L13.4 5.4v8h-10.8z"/><path d="M5.2 2.6v3.5h4.4V2.6"/><rect x="5.1" y="9" width="5.8" height="4.4"/></svg><span>Save</span></button>
             <span class="spacer"></span>
-            <span id="node-status" class="node-status"></span>
+            <span class="toolbar-hint">Ctrl+Enter to run</span>
           </div>
           <div id="output-panel" class="output-panel">
             <div class="output-header">OUTPUT <button id="btn-clear" title="Clear output (Ctrl+J)">Clear</button></div>
@@ -39,6 +61,16 @@
           </div>
         </section>
       </main>
+      <footer class="statusbar">
+        <span id="status-path" class="status-item" title="Active file">—</span>
+        <span id="status-run" class="status-item"></span>
+        <span class="status-spacer"></span>
+        <span id="status-lang" class="status-item">JavaScript</span>
+        <span id="status-enc" class="status-item">UTF-8</span>
+        <button id="status-wrap" class="status-btn" title="Toggle word wrap (Alt+Z)" aria-pressed="false">Wrap: Off</button>
+        <span id="status-pos" class="status-item" title="Cursor position">Ln 1, Col 1</span>
+        <span id="status-node" class="status-item" title="Node.js detection"></span>
+      </footer>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

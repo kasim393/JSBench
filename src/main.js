@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { EditorState } from "@codemirror/state";
-import { createEditor, baseExtensions, setHandlers } from "./editor.js";
+import { createEditor, baseExtensions, setHandlers, themeCompartment, themeExtension, setThemeName, wrapCompartment, wrapExtension, setWrapEnabled } from "./editor.js";
 
 const $ = (id) => document.getElementById(id);
 const editorEl = $("editor");
@@ -33,12 +33,206 @@ function clearOutput() {
   outputEl.innerHTML = "";
 }
 
+// ---------- theme ----------
+const THEME_KEY = "jsbench.theme";
+
+function readStoredTheme() {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    if (t === "light" || t === "dark") return t;
+  } catch { /* storage unavailable */ }
+  return "dark";
+}
+
+// Apply a theme to the CSS variables and to every CodeMirror state. Open tabs
+// keep their own EditorState, so each stored state must be reconfigured too.
+function applyTheme(name, persist = true) {
+  const theme = name === "light" ? "light" : "dark";
+  setThemeName(theme);
+  document.documentElement.dataset.theme = theme;
+  const ext = themeExtension(theme);
+  for (const t of tabs) t.state = t.state.update({ effects: themeCompartment.reconfigure(ext) }).state;
+  if (view) view.dispatch({ effects: themeCompartment.reconfigure(ext) });
+  if (persist) { try { localStorage.setItem(THEME_KEY, theme); } catch { /* ignore */ } }
+}
+
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+}
+
+// ---------- word wrap ----------
+const WRAP_KEY = "jsbench.wordWrap";
+
+function readStoredWrap() {
+  try { return localStorage.getItem(WRAP_KEY) === "1"; } catch { return false; }
+}
+
+let wordWrap = readStoredWrap();
+
+// Reconfigure word wrap on every open tab (each holds its own EditorState)
+// and on the live view, then reflect the state in the status bar.
+function applyWrap(enabled, persist = true) {
+  wordWrap = !!enabled;
+  setWrapEnabled(wordWrap);
+  const ext = wrapExtension(wordWrap);
+  for (const t of tabs) t.state = t.state.update({ effects: wrapCompartment.reconfigure(ext) }).state;
+  if (view) view.dispatch({ effects: wrapCompartment.reconfigure(ext) });
+  const btn = $("status-wrap");
+  if (btn) {
+    btn.textContent = wordWrap ? "Wrap: On" : "Wrap: Off";
+    btn.classList.toggle("active", wordWrap);
+    btn.setAttribute("aria-pressed", wordWrap ? "true" : "false");
+  }
+  if (persist) { try { localStorage.setItem(WRAP_KEY, wordWrap ? "1" : "0"); } catch { /* ignore */ } }
+}
+
+function toggleWrap() {
+  applyWrap(!wordWrap);
+}
+
+// ---------- status bar ----------
+function relPath(p) {
+  if (!p) return "";
+  const ws = (workspace ?? "").replace(/[\\/]+$/, "");
+  if (ws && p.toLowerCase().startsWith(ws.toLowerCase())) {
+    return p.slice(ws.length).replace(/^[\\/]+/, "") || p;
+  }
+  return p;
+}
+
+function updateStatusPath() {
+  const el = $("status-path");
+  if (!el) return;
+  const tab = activeFile();
+  if (!tab) { el.textContent = "—"; el.title = ""; return; }
+  el.textContent = relPath(tab.path) + (tab.dirty ? " ●" : "");
+  el.title = tab.path;
+}
+
+function updateStatusPos() {
+  const el = $("status-pos");
+  if (!el || !view) return;
+  const state = view.state;
+  const sel = state.selection.main;
+  const line = state.doc.lineAt(sel.head);
+  const col = sel.head - line.from + 1;
+  if (sel.empty) {
+    el.textContent = `Ln ${line.number}, Col ${col}`;
+  } else {
+    const end = state.doc.lineAt(sel.to);
+    el.textContent = `Ln ${line.number}–${end.number}, Col ${col} (${Math.abs(sel.to - sel.from)} chars)`;
+  }
+}
+
+function setRunStatus(text, cls = "") {
+  const el = $("status-run");
+  if (!el) return;
+  el.textContent = text ?? "";
+  el.className = "status-item" + (cls ? " " + cls : "");
+}
+
+// ---------- title bar + breadcrumb ----------
+function workspaceName() {
+  if (!workspace) return "no workspace";
+  const parts = workspace.split(/[\\/]+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : workspace;
+}
+
+function updateTitleDoc() {
+  const wsEl = $("tb-workspace");
+  const fileEl = $("tb-file");
+  if (wsEl) wsEl.textContent = workspaceName();
+  const tab = activeFile();
+  if (fileEl) fileEl.textContent = tab ? tab.name + (tab.dirty ? " •" : "") : "untitled";
+}
+
+function renderBreadcrumb() {
+  const el = $("breadcrumb");
+  if (!el) return;
+  el.innerHTML = "";
+  const tab = activeFile();
+  if (!tab) return;
+  const segs = relPath(tab.path).split(/[\\/]+/).filter(Boolean);
+  segs.forEach((seg, i) => {
+    if (i) {
+      const sep = document.createElement("span");
+      sep.className = "crumb-sep";
+      sep.textContent = "›";
+      el.appendChild(sep);
+    }
+    const b = document.createElement("span");
+    b.className = "crumb" + (i === segs.length - 1 ? " current" : "");
+    b.textContent = seg;
+    el.appendChild(b);
+  });
+}
+
+const LANG_BY_EXT = {
+  js: "JavaScript", mjs: "JavaScript", cjs: "JavaScript",
+  ts: "TypeScript", json: "JSON", md: "Markdown",
+  html: "HTML", css: "CSS", txt: "Plain Text",
+};
+
+function updateStatusLang() {
+  const el = $("status-lang");
+  if (!el) return;
+  const tab = activeFile();
+  const ext = tab ? (tab.name.split(".").pop() || "").toLowerCase() : "";
+  el.textContent = LANG_BY_EXT[ext] ?? "Plain Text";
+}
+
+// ---------- native window controls (custom title bar) ----------
+async function initWindowControls() {
+  let win = null;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    win = getCurrentWindow();
+  } catch { /* not running inside Tauri */ }
+
+  // Belt-and-braces: strip the native title bar at runtime too. tauri.conf.json
+  // is only read when the app process starts, so a config change alone is not
+  // always reflected in an already-running dev session.
+  try { await win?.setDecorations(false); } catch { /* permission or platform quirk */ }
+
+  const minBtn = $("win-min"), maxBtn = $("win-max"), closeBtn = $("win-close");
+
+  const syncMax = async () => {
+    if (!win || !maxBtn) return;
+    try {
+      const max = await win.isMaximized();
+      const label = max ? "Restore" : "Maximize";
+      maxBtn.title = label;
+      maxBtn.setAttribute("aria-label", label);
+    } catch { /* permission or platform quirk — ignore */ }
+  };
+
+  if (minBtn) minBtn.onclick = async () => { try { await win?.minimize(); } catch { /* ignore */ } };
+  if (closeBtn) closeBtn.onclick = async () => { try { await win?.close(); } catch { /* ignore */ } };
+  if (maxBtn) maxBtn.onclick = async () => {
+    try { await win?.toggleMaximize(); } catch { /* ignore */ }
+    syncMax();
+  };
+
+  // double-clicking the drag region toggles maximize (Windows convention)
+  const bar = document.querySelector(".titlebar");
+  if (bar) {
+    bar.addEventListener("dblclick", (e) => {
+      if (e.target.closest("button")) return;
+      maxBtn?.click();
+    });
+  }
+
+  syncMax();
+  try { win?.onResized(() => syncMax()); } catch { /* ignore */ }
+}
+
 // ---------- run / stop ----------
 async function runCurrent() {
   const tab = activeFile();
   if (!tab || running) return;
   await saveCurrent(false);
   appendOutput(`▸ Running ${tab.name}...\n`, "sys");
+  setRunStatus("Running…");
   running = true;
   $("btn-run").disabled = true;
   $("btn-stop").disabled = false;
@@ -72,10 +266,13 @@ async function setupRunEvents() {
     const { code, duration_ms, timed_out } = event.payload;
     if (timed_out) {
       appendOutput(`▸ Timeout: process killed after ${(duration_ms / 1000).toFixed(1)}s\n`, "err");
+      setRunStatus(`Timed out after ${(duration_ms / 1000).toFixed(1)}s`, "err");
     } else if (code === -2) {
       appendOutput("▸ Stopped by user.\n", "sys");
+      setRunStatus("Stopped", "err");
     } else {
       appendOutput(`▸ Exited with code ${code ?? 0} (${duration_ms}ms)\n`, "sys");
+      setRunStatus(`Ran in ${duration_ms} ms`, code ? "err" : "ok");
     }
     running = false;
     currentRunId = null;
@@ -85,22 +282,36 @@ async function setupRunEvents() {
 }
 
 // ---------- tabs ----------
+const TAB_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.8h5.2L12.6 5.2v9H4z"/><path d="M9.2 1.8v3.4h3.4"/></svg>`;
+
 function renderTabs() {
   tabsEl.innerHTML = "";
   tabs.forEach((tab, i) => {
     const el = document.createElement("div");
-    el.className = "tab" + (i === activeTab ? " active" : "");
+    el.className = "tab" + (i === activeTab ? " active" : "") + (tab.dirty ? " dirty" : "");
+    const icon = document.createElement("span");
+    icon.className = "tab-icon";
+    icon.innerHTML = TAB_ICON;
     const label = document.createElement("span");
-    label.textContent = tab.name + (tab.dirty ? " *" : "");
-    el.appendChild(label);
+    label.className = "tab-name";
+    label.textContent = tab.name;
+    label.title = tab.path;
+    const dirty = document.createElement("span");
+    dirty.className = "dirty";
+    dirty.title = "Unsaved changes";
     const close = document.createElement("span");
     close.className = "close";
     close.textContent = "×";
+    close.title = "Close";
     close.onclick = (e) => { e.stopPropagation(); closeTab(i); };
-    el.appendChild(close);
+    el.append(icon, label, dirty, close);
     el.onclick = () => switchTab(i);
     tabsEl.appendChild(el);
   });
+  updateStatusPath();
+  updateTitleDoc();
+  renderBreadcrumb();
+  updateStatusLang();
 }
 
 async function openFile(path) {
@@ -122,6 +333,7 @@ function switchTab(i) {
   view.setState(tabs[i].state);
   view.focus();
   renderTabs();
+  updateStatusPos();
 }
 
 function closeTab(i) {
@@ -144,6 +356,7 @@ function closeTab(i) {
     view.setState(EditorState.create({ doc: "", extensions: baseExtensions() }));
   }
   renderTabs();
+  updateStatusPos();
   saveSession();
 }
 
@@ -163,9 +376,9 @@ const expanded = new Set(); // normalized paths of expanded folders
 let sidebarWidth = 260;
 
 const ICONS = {
-  folderClosed: `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#d7a55b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 3.5c0-.6.4-1 1-1h3l1.2 1.4H13c.6 0 1 .4 1 1v5.6c0 .6-.4 1-1 1h-10.5c-.6 0-1-.4-1-1v-7z"/></svg>`,
-  folderOpen: `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#d7a55b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5c0-.6.4-1 1-1h3l1.2 1.4H13c.6 0 1 .4 1 1v1H1.5v-2.4z" fill="#d7a55b" fill-opacity="0.25"/><path d="M1.5 6.4h12.5l-1 4.2c-.1.5-.5.9-1 .9H3c-.6 0-1-.4-1-1l-.5-4.1z"/></svg>`,
-  file: `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#f0db4f" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5L12.5 5v9.5H4z"/><path d="M9 1.5V5h3.5"/></svg>`,
+  folderClosed: `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#c79aff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 3.5c0-.6.4-1 1-1h3l1.2 1.4H13c.6 0 1 .4 1 1v5.6c0 .6-.4 1-1 1h-10.5c-.6 0-1-.4-1-1v-7z"/></svg>`,
+  folderOpen: `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#c79aff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5c0-.6.4-1 1-1h3l1.2 1.4H13c.6 0 1 .4 1 1v1H1.5v-2.4z" fill="#c79aff" fill-opacity="0.25"/><path d="M1.5 6.4h12.5l-1 4.2c-.1.5-.5.9-1 .9H3c-.6 0-1-.4-1-1l-.5-4.1z"/></svg>`,
+  file: `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#6ee7ff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5L12.5 5v9.5H4z"/><path d="M9 1.5V5h3.5"/></svg>`,
 };
 
 // chevron-right: rotates 90° via CSS when the folder is expanded
@@ -178,6 +391,14 @@ function setFolderIcon(el, open) {
 }
 function joinPath(dir, name) {
   return dir.replace(/[\\/]+$/, "") + "\\" + name;
+}
+// folders first, then natural name order (file2 before file10), case-insensitive
+const nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+function compareEntries(x, y) {
+  const xd = x.isDir ?? x.is_dir ?? false;
+  const yd = y.isDir ?? y.is_dir ?? false;
+  if (xd !== yd) return xd ? -1 : 1;
+  return nameCollator.compare(x.name, y.name);
 }
 function autofitSidebar(force = false) {
   const panel = document.getElementById("file-tree");
@@ -230,12 +451,7 @@ async function toggleFolder(el, path, expandOnly = false) {
     if (!w.dataset.loaded) {
       try {
         const entries = await invoke("list_dir", { path });
-        entries.sort((x, y) => {
-          const xd = x.isDir ?? x.is_dir ?? false;
-          const yd = y.isDir ?? y.is_dir ?? false;
-          if (xd !== yd) return xd ? -1 : 1;
-          return x.name.toLowerCase().localeCompare(y.name.toLowerCase());
-        });
+        entries.sort(compareEntries);
         entries.forEach((item) => makeItem(item, w));
         w.dataset.loaded = "1";
       } catch (e) { appendOutput(e + "\n", "err"); }
@@ -416,12 +632,7 @@ async function refreshTree() {
   treeEl.innerHTML = "";
   try {
     const entries = await invoke("list_dir", { path: workspace });
-    entries.sort((x, y) => {
-      const xd = x.isDir ?? x.is_dir ?? false;
-      const yd = y.isDir ?? y.is_dir ?? false;
-      if (xd !== yd) return xd ? -1 : 1;
-      return x.name.toLowerCase().localeCompare(y.name.toLowerCase());
-    });
+    entries.sort(compareEntries);
     entries.forEach((item) => makeItem(item, treeEl));
     for (const p of [...expanded]) {
       const nodes = [...treeEl.querySelectorAll(".node.folder")];
@@ -429,6 +640,7 @@ async function refreshTree() {
       if (el) await ensureExpanded(el, el.dataset.path);
     }
     autofitSidebar(true);
+    updateTitleDoc();
   } catch (e) {
     appendOutput(e + "\n", "err");
   }
@@ -500,13 +712,26 @@ window.addEventListener("keydown", (e) => {
   if (handled) { e.preventDefault(); e.stopPropagation(); }
 }, true);
 
+// Alt+Z — toggle word wrap (VS Code convention)
+window.addEventListener("keydown", (e) => {
+  if (e.isComposing || !e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key.toLowerCase() !== "z") return;
+  e.preventDefault();
+  e.stopPropagation();
+  toggleWrap();
+}, true);
+
 // ---------- init ----------
 async function init() {
   await setupRunEvents();
 
+  applyTheme(readStoredTheme(), false); // set the theme before the editor is created
+  applyWrap(wordWrap, false);           // and the initial word-wrap state
+
   view = createEditor(editorEl, {
     onRun: runCurrent,
     onSave: () => saveCurrent(),
+    onCursor: updateStatusPos,
     onChange: () => {
       const tab = activeFile();
       if (tab && !tab.dirty) { tab.dirty = true; renderTabs(); }
@@ -517,6 +742,8 @@ async function init() {
   $("btn-stop").onclick = stopRun;
   $("btn-save").onclick = () => saveCurrent();
   $("btn-clear").onclick = clearOutput;
+  $("btn-theme").onclick = toggleTheme;
+  $("status-wrap").onclick = toggleWrap;
   $("btn-new-file").onclick = () => promptNew("file");
   $("btn-new-folder").onclick = () => promptNew("folder");
   $("btn-refresh").onclick = refreshTree;
@@ -524,6 +751,7 @@ async function init() {
   const resizer = $("sidebar-resizer");
   panel.style.width = sidebarWidth + "px";
   $("btn-sidebar").onclick = toggleSidebar;
+  initWindowControls();
   if (resizer) {
     resizer.onmousedown = (e) => {
       e.preventDefault();
@@ -558,10 +786,14 @@ async function init() {
 
   try {
     const status = await invoke("node_status");
-    $("node-status").textContent = status.ok ? `Node: ${status.version}` : "Node.js not found!";
-    if (!status.ok) appendOutput("⚠ Node.js not detected. Install Node.js or set its path in config.\n", "err");
+    const nodeEl = $("status-node");
+    nodeEl.textContent = status.ok ? `Node ${status.version}` : "Node.js not found";
+    nodeEl.title = status.ok ? `Node.js ${status.version}` : "Node.js not detected";
+    nodeEl.classList.toggle("ok", !!status.ok);
+    nodeEl.classList.toggle("err", !status.ok);
+    if (!status.ok) appendOutput("Warning: Node.js not detected. Install Node.js or set its path in config.\n", "err");
   } catch (e) {
-    $("node-status").textContent = "Node status unknown";
+    $("status-node").textContent = "Node status unknown";
   }
 
   try {
@@ -583,13 +815,15 @@ async function init() {
       if (restoredActive >= 0) switchTab(restoredActive);
       if (openFiles.length) appendOutput(`▸ Restored ${openFiles.length} tab(s)\n`, "sys");
     } else {
-      appendOutput("▸ No workspace configured. Click 📂 to open a folder.\n", "sys");
+      appendOutput("▸ No workspace configured. Use the Open Folder button to pick a folder.\n", "sys");
     }
   } catch (e) {
     appendOutput(`${e}\n`, "err");
   }
 
   appendOutput("▸ Ready. Write JS and press Ctrl+Enter to run.\n", "sys");
+  updateStatusPos();
+  updateTitleDoc();
 }
 
 init();

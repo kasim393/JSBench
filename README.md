@@ -7,8 +7,14 @@ Tauri 2 + Rust + vanilla JS + CodeMirror 6, executed with your installed Node.js
 
 ## Features
 
-- **CodeMirror 6 editor** — JS syntax highlighting, dark theme, autocomplete,
-  bracket matching, search, multi-tab with unsaved indicators
+- **CodeMirror 6 editor** — JS syntax highlighting, autocomplete, bracket
+  matching, search, word wrap (`Alt+Z`), multi-tab with unsaved indicators
+- **Aether look** — navy surfaces, synthwave syntax colours and an electric-violet
+  accent; frameless window (native decorations off) filling the whole viewport,
+  with a custom title bar carrying minimize / maximize / close dots on the right,
+  plus breadcrumbs and a status bar
+- **Themes** — Aether dark by default, plus a light theme toggled from the
+  title bar; the choice is remembered between launches
 - **Workspace file tree** — open any folder, create/rename/delete files and
   folders (including inside subfolders), collapse/expand directories
 - **Instant run** — `Ctrl+Enter` executes the current file with Node.js;
@@ -64,6 +70,7 @@ Detected from PATH. Override with the `JSBENCH_NODE_PATH` environment variable.
 - `Ctrl+=` / `Ctrl++` — Increase font size
 - `Ctrl+-` — Decrease font size
 - `Ctrl+0` — Reset font size
+- `Alt+Z` — Toggle word wrap
 
 ## Project docs
 
