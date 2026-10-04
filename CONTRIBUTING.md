@@ -5,7 +5,7 @@ are ones that respect its scope.
 
 ## Philosophy
 
-JSBench is a **lightweight JavaScript DSA practice app** — not a VS Code clone.
+JSBench is a **lightweight JavaScript editor and runner** — not a VS Code clone.
 Before proposing a feature, check `docs/SPEC.md` "Important Design Rules".
 Things that will likely be rejected: Git integration, plugins/extensions,
 terminal emulator, AI features, built-in browser, large UI frameworks.

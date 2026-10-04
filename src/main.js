@@ -723,7 +723,10 @@ window.addEventListener("keydown", (e) => {
 
 // ---------- init ----------
 async function init() {
-  await setupRunEvents();
+  // Streaming output needs the Tauri event bridge. Swallow the failure so the
+  // UI still boots under a plain `npm run dev` (no Tauri internals available);
+  // run/stop/file features simply stay unavailable there.
+  try { await setupRunEvents(); } catch { /* not running inside Tauri */ }
 
   applyTheme(readStoredTheme(), false); // set the theme before the editor is created
   applyWrap(wordWrap, false);           // and the initial word-wrap state
@@ -818,7 +821,10 @@ async function init() {
       appendOutput("▸ No workspace configured. Use the Open Folder button to pick a folder.\n", "sys");
     }
   } catch (e) {
-    appendOutput(`${e}\n`, "err");
+    // With no Tauri backend (plain `npm run dev`) invoke() rejects; report it
+    // as an informational notice rather than a raw TypeError.
+    if (window.__TAURI_INTERNALS__) appendOutput(`${e}\n`, "err");
+    else appendOutput("▸ Browser preview only — run `npm run tauri dev` for file and run support.\n", "sys");
   }
 
   appendOutput("▸ Ready. Write JS and press Ctrl+Enter to run.\n", "sys");

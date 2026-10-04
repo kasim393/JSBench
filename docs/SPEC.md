@@ -1,10 +1,13 @@
-# Lightweight JavaScript DSA Editor
+# Lightweight JavaScript Editor
 
 ## Goal
 
-Build a very small, fast Windows desktop app for practicing JavaScript DSA.
+Build a very small, fast Windows desktop app for writing and running JavaScript.
 
 The app should feel like a lightweight version of RunJS, but with a proper local file/folder manager.
+
+DSA practice is one *example* of what the app is used for — see "Phase 8" — but
+the product itself is a general-purpose JavaScript editor, not a DSA-specific tool.
 
 ## Tech Stack
 
@@ -24,7 +27,7 @@ Create a simple dark IDE-like layout:
 
 ```text
 ┌─────────────────────────────────────────────┐
-│  DSA Runner                                 │
+│  JSBench                                 │
 ├──────────────┬──────────────────────────────┤
 │ FILES        │ problem-01.js                │
 │              ├──────────────────────────────┤
@@ -86,7 +89,7 @@ The editor should be the main focus of the application.
 
 Create a local workspace.
 
-Example:
+Example — a DSA practice folder (any folder of `.js` files works the same way):
 
 ```text
 DSA/
@@ -224,9 +227,11 @@ No database is required.
 
 ---
 
-# Phase 8 — DSA-Friendly Features
+# Phase 8 — Quick Run & Convenience Features
 
-Add small features specifically useful for DSA practice:
+Add small features that make the write → run → read-output loop fast. DSA
+practice is the motivating example here, but everything below is useful for
+any JavaScript work:
 
 ### Quick Run
 
@@ -263,8 +268,8 @@ Do NOT implement this in the first MVP unless it is easy.
 The final application should ideally support:
 
 ```text
-DSARunner/
-├── DSARunner.exe
+JSBench/
+├── jsbench.exe
 ├── config/
 └── workspace/
 ```
@@ -371,7 +376,7 @@ Do not implement future features before the current phase works.
 The MVP is complete when I can:
 
 1. Open the app.
-2. Select my DSA folder.
+2. Select my workspace folder.
 3. See my folders/files.
 4. Create a `.js` file.
 5. Write JavaScript.

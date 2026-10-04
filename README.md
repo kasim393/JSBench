@@ -1,9 +1,14 @@
-# JSBench — Lightweight JavaScript DSA Editor
+# JSBench — Lightweight JavaScript Editor & Runner
 
-A fast, minimal Windows desktop app for practicing JavaScript DSA.
+A fast, minimal Windows desktop app for writing and running JavaScript.
 Tauri 2 + Rust + vanilla JS + CodeMirror 6, executed with your installed Node.js.
 
+A small, open alternative to scratch-pad runners like RunJS — but with a real
+local file/folder workspace instead of a single buffer.
+
 ![status](https://img.shields.io/badge/status-MVP-green) ![license](https://img.shields.io/badge/license-MIT-blue)
+
+![JSBench — workspace, editor and output panel](docs/screenshot.png)
 
 ## Features
 
@@ -25,6 +30,22 @@ Tauri 2 + Rust + vanilla JS + CodeMirror 6, executed with your installed Node.js
   are restored on launch
 - **Portable** — single 8 MB exe; config lives next to the binary when a
   `config/` folder is present, otherwise in `%APPDATA%\JSBench`
+
+## Examples
+
+JSBench is deliberately general — it runs any JavaScript you point it at.
+A few things it is handy for:
+
+- **DSA practice** — one folder per topic (`arrays/`, `strings/`, `graphs/`),
+  work through problems file by file, and get `console.log` output instantly
+  with `Ctrl+Enter`
+- **Snippets and scratch pads** — check a function without spinning up a project
+- **Learning and teaching** — a clean, distraction-free window for small demos
+- **Quick data munging** — paste some JSON, transform it, look at the result
+
+It is *not* a DSA-specific tool: there is no problem bank, judge, test runner or
+algorithm visualiser. It is a small editor that runs code; how you organise the
+folder is up to you.
 
 ## Development
 
