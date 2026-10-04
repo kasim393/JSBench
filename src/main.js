@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { EditorState } from "@codemirror/state";
+import { EditorState, EditorSelection } from "@codemirror/state";
 import { createEditor, baseExtensions, setHandlers, themeCompartment, themeExtension, setThemeName, wrapCompartment, wrapExtension, setWrapEnabled } from "./editor.js";
 import { formatJs } from "./format.js";
 
@@ -423,6 +423,87 @@ function closeTab(i) {
 }
 
 // ---------- save ----------
+// Replace the buffer while keeping the caret where it is. Dispatching a
+// whole-document change maps any position inside the replaced range to its
+// start, which throws the caret to offset 0 — and Prettier rewrites the whole
+// file even when all it did was add a trailing newline. So trim the unchanged
+// prefix/suffix, replace only the middle, and map the selection across that
+// edit. Returns false when there is nothing to do.
+function replaceDoc(view, text) {
+  const old = view.state.doc.toString();
+  if (old === text) return false;
+
+  let start = 0;
+  const minLen = Math.min(old.length, text.length);
+  while (start < minLen && old.charCodeAt(start) === text.charCodeAt(start)) start++;
+
+  let oldEnd = old.length;
+  let newEnd = text.length;
+  while (
+    oldEnd > start &&
+    newEnd > start &&
+    old.charCodeAt(oldEnd - 1) === text.charCodeAt(newEnd - 1)
+  ) {
+    oldEnd--;
+    newEnd--;
+  }
+
+  const map = (pos) => {
+    // Untouched prefix keeps its offset; untouched suffix only shifts.
+    if (pos <= start) return pos;
+    if (pos >= oldEnd) return pos + (newEnd - oldEnd);
+    // Inside the edit: re-anchor to the matching line so the caret stays on
+    // the code the user was editing instead of collapsing to `start`.
+    const anchor = anchorLine(old, text, pos);
+    if (anchor !== -1) return anchor;
+    return start + Math.min(pos - start, newEnd - start);
+  };
+
+  view.dispatch({
+    changes: { from: start, to: oldEnd, insert: text.slice(start, newEnd) },
+    selection: EditorSelection.create(
+      view.state.selection.ranges.map((r) => EditorSelection.range(map(r.anchor), map(r.head))),
+      view.state.selection.mainIndex,
+    ),
+  });
+  return true;
+}
+
+// Offset of each line start in `doc`.
+function lineStarts(doc) {
+  const starts = [0];
+  for (let i = doc.indexOf("\n"); i !== -1; i = doc.indexOf("\n", i + 1)) starts.push(i + 1);
+  return starts;
+}
+
+// Where should a caret sitting at `pos` in `old` land in `text`? Formatting
+// only shuffles whitespace, so the caret's line is matched against `text`
+// with all whitespace stripped, and the column is carried over. Picks the
+// nearest match so repeated lines (blank lines, braces) resolve sensibly.
+// Returns -1 when no line matches.
+function anchorLine(old, text, pos) {
+  const from = old.lastIndexOf("\n", pos - 1) + 1;
+  const nl = old.indexOf("\n", from);
+  const key = old.slice(from, nl === -1 ? old.length : nl).replace(/\s+/g, "");
+  const col = pos - from;
+
+  const starts = lineStarts(text);
+  let target = from ? old.slice(0, from).split("\n").length - 1 : 0;
+  let best = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < starts.length; i++) {
+    const s = starts[i];
+    const e = i + 1 < starts.length ? starts[i + 1] - 1 : text.length;
+    if (text.slice(s, e).replace(/\s+/g, "") !== key) continue;
+    const dist = Math.abs(i - target);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = s + Math.min(col, e - s);
+    }
+  }
+  return best;
+}
+
 async function saveCurrent(refresh = true) {
   const tab = activeFile();
   if (!tab) return;
@@ -440,9 +521,7 @@ async function saveCurrent(refresh = true) {
   // Reflect the formatted text in the editor before writing so what's on
   // disk always matches what's shown. onChange marks the tab dirty; the
   // write below clears it again right after.
-  if (content !== raw) {
-    view.dispatch({ changes: { from: 0, to: raw.length, insert: content } });
-  }
+  replaceDoc(view, content);
   await invoke("write_file", { path: tab.path, content });
   tab.dirty = false;
   renderTabs();
@@ -456,8 +535,7 @@ async function formatCurrent() {
   const raw = view.state.doc.toString();
   try {
     const content = await formatJs(raw);
-    if (content !== raw) {
-      view.dispatch({ changes: { from: 0, to: raw.length, insert: content } });
+    if (replaceDoc(view, content)) {
       appendOutput(`▸ Formatted ${tab.name}\n`, "sys");
     }
   } catch (e) {
