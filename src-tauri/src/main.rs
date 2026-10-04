@@ -1,3 +1,6 @@
+// Prevents an extra console window from opening alongside the app in release.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -74,6 +77,19 @@ fn candidates(dir: &std::path::Path, name: &str) -> Vec<PathBuf> {
     }
 }
 
+/// Spawn a console program (`node`) without flashing a console window. The
+/// parent is a GUI-subsystem process, so Windows would otherwise allocate a
+/// fresh console for every child it starts.
+fn hide_console(mut cmd: Command) -> Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 // #[tauri::command(async)] runs these on a worker thread instead of the
 // main thread, so file I/O and the `node --version` probe never block the UI.
 
@@ -81,7 +97,7 @@ fn candidates(dir: &std::path::Path, name: &str) -> Vec<PathBuf> {
 fn node_status() -> NodeStatus {
     match find_node() {
         Some(p) => {
-            let out = Command::new(&p).arg("--version").output();
+            let out = hide_console(Command::new(&p)).arg("--version").output();
             let version = out
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 .unwrap_or_default();
@@ -116,7 +132,7 @@ fn run_js(
         }
     }
 
-    let mut child = Command::new(node)
+    let mut child = hide_console(Command::new(node))
         .arg(&path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
