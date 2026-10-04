@@ -31,7 +31,7 @@ local file/folder workspace instead of a single buffer.
   guards against infinite loops
 - **Persistence** — workspace, open tabs, active file, and window size/position
   are restored on launch
-- **Portable** — single 8 MB exe; config lives next to the binary when a
+- **Portable** — single ~3.5 MB exe; config lives next to the binary when a
   `config/` folder is present, otherwise in `%APPDATA%\JSBench`
 
 ## Examples
