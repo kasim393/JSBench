@@ -24,6 +24,9 @@ local file/folder workspace instead of a single buffer.
   folders (including inside subfolders), collapse/expand directories
 - **Instant run** — `Ctrl+Enter` executes the current file with Node.js;
   stdout/stderr stream live into the output panel
+- **Format on save** — Prettier formats `.js` files as you save (toggle
+  `Fmt` in the status bar); `Alt+Shift+F` formats on demand — a file with
+  a syntax error is saved unformatted instead of failing
 - **Process control** — Stop button kills the running process; 10s timeout
   guards against infinite loops
 - **Persistence** — workspace, open tabs, active file, and window size/position
@@ -92,6 +95,7 @@ Detected from PATH. Override with the `JSBENCH_NODE_PATH` environment variable.
 - `Ctrl+-` — Decrease font size
 - `Ctrl+0` — Reset font size
 - `Alt+Z` — Toggle word wrap
+- `Alt+Shift+F` — Format document
 
 ## Project docs
 

@@ -245,7 +245,14 @@ Run current file.
 
 ### Format
 
-Optional later feature.
+Implemented with Prettier (standalone build, runs in the webview):
+
+- **Format on save** — enabled by default, toggled from the status bar
+  (`Fmt: On/Off`), remembered between launches.
+- **Format now** — `Alt + Shift+F` formats the buffer without saving.
+- On a syntax error the file is saved unformatted and a warning appears
+  in the output panel; formatting never blocks saving.
+- Only `.js` files are formatted.
 
 ### Input
 

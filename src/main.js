@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { EditorState } from "@codemirror/state";
 import { createEditor, baseExtensions, setHandlers, themeCompartment, themeExtension, setThemeName, wrapCompartment, wrapExtension, setWrapEnabled } from "./editor.js";
+import { formatJs } from "./format.js";
 
 const $ = (id) => document.getElementById(id);
 const editorEl = $("editor");
@@ -88,6 +89,34 @@ function applyWrap(enabled, persist = true) {
 
 function toggleWrap() {
   applyWrap(!wordWrap);
+}
+
+// ---------- format on save ----------
+const FORMAT_KEY = "jsbench.formatOnSave";
+
+function readStoredFormat() {
+  try {
+    const v = localStorage.getItem(FORMAT_KEY);
+    return v === null ? true : v === "1"; // default on, like VS Code
+  } catch { return true; }
+}
+
+let formatOnSave = readStoredFormat();
+
+// Reflect the toggle in the status bar (the flag itself only gates save())
+function applyFormat(enabled, persist = true) {
+  formatOnSave = !!enabled;
+  const btn = $("status-format");
+  if (btn) {
+    btn.textContent = formatOnSave ? "Fmt: On" : "Fmt: Off";
+    btn.classList.toggle("active", formatOnSave);
+    btn.setAttribute("aria-pressed", formatOnSave ? "true" : "false");
+  }
+  if (persist) { try { localStorage.setItem(FORMAT_KEY, formatOnSave ? "1" : "0"); } catch { /* ignore */ } }
+}
+
+function toggleFormat() {
+  applyFormat(!formatOnSave);
 }
 
 // ---------- status bar ----------
@@ -364,11 +393,43 @@ function closeTab(i) {
 async function saveCurrent(refresh = true) {
   const tab = activeFile();
   if (!tab) return;
-  const content = view.state.doc.toString();
+  const raw = view.state.doc.toString();
+  let content = raw;
+  // Format on save. A syntax error must never block saving, so on failure
+  // we keep the raw buffer and report it in the output panel instead.
+  if (formatOnSave && tab.path.toLowerCase().endsWith(".js")) {
+    try {
+      content = await formatJs(raw);
+    } catch (e) {
+      appendOutput(`▸ Format failed, saving unformatted: ${e.message ?? e}\n`, "err");
+    }
+  }
+  // Reflect the formatted text in the editor before writing so what's on
+  // disk always matches what's shown. onChange marks the tab dirty; the
+  // write below clears it again right after.
+  if (content !== raw) {
+    view.dispatch({ changes: { from: 0, to: raw.length, insert: content } });
+  }
   await invoke("write_file", { path: tab.path, content });
   tab.dirty = false;
   renderTabs();
   if (refresh) appendOutput(`▸ Saved ${tab.name}\n`, "sys");
+}
+
+// ---------- manual format (Alt+Shift+F) ----------
+async function formatCurrent() {
+  const tab = activeFile();
+  if (!tab) return;
+  const raw = view.state.doc.toString();
+  try {
+    const content = await formatJs(raw);
+    if (content !== raw) {
+      view.dispatch({ changes: { from: 0, to: raw.length, insert: content } });
+      appendOutput(`▸ Formatted ${tab.name}\n`, "sys");
+    }
+  } catch (e) {
+    appendOutput(`▸ Format failed: ${e.message ?? e}\n`, "err");
+  }
 }
 
 // ---------- file tree (VS Code style) ----------
@@ -721,6 +782,15 @@ window.addEventListener("keydown", (e) => {
   toggleWrap();
 }, true);
 
+// Alt+Shift+F — format document (VS Code convention); formats without saving
+window.addEventListener("keydown", (e) => {
+  if (e.isComposing || !e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key.toLowerCase() !== "f" || !e.shiftKey) return;
+  e.preventDefault();
+  e.stopPropagation();
+  formatCurrent();
+}, true);
+
 // ---------- init ----------
 async function init() {
   // Streaming output needs the Tauri event bridge. Swallow the failure so the
@@ -730,6 +800,7 @@ async function init() {
 
   applyTheme(readStoredTheme(), false); // set the theme before the editor is created
   applyWrap(wordWrap, false);           // and the initial word-wrap state
+  applyFormat(formatOnSave, false);     // and the format-on-save toggle
 
   view = createEditor(editorEl, {
     onRun: runCurrent,
@@ -747,6 +818,7 @@ async function init() {
   $("btn-clear").onclick = clearOutput;
   $("btn-theme").onclick = toggleTheme;
   $("status-wrap").onclick = toggleWrap;
+  $("status-format").onclick = toggleFormat;
   $("btn-new-file").onclick = () => promptNew("file");
   $("btn-new-folder").onclick = () => promptNew("folder");
   $("btn-refresh").onclick = refreshTree;
