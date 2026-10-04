@@ -22,15 +22,48 @@ function activeFile() {
 }
 
 // ---------- output ----------
+// Output is queued and flushed once per animation frame so a chatty script
+// can't force a layout per line, and the panel is capped so memory stays
+// bounded no matter how much the program prints.
+const OUTPUT_MAX_SPANS = 2000;
+let outputQueue = [];
+let outputFlushScheduled = 0;
+
 function appendOutput(text, cls = "ok") {
-  const span = document.createElement("span");
-  span.className = cls;
-  span.textContent = text;
-  outputEl.appendChild(span);
-  outputEl.scrollTop = outputEl.scrollHeight;
+  outputQueue.push([text, cls]);
+  // If rAF never fires (window minimized/backgrounded), flush eagerly so
+  // the queue can't grow without bound while the app is hidden.
+  if (outputQueue.length > 4000) {
+    flushOutput();
+    return;
+  }
+  if (!outputFlushScheduled) {
+    outputFlushScheduled = requestAnimationFrame(flushOutput);
+  }
+}
+
+function flushOutput() {
+  outputFlushScheduled = 0;
+  if (!outputQueue.length) return;
+  // autoscroll only when the user is already near the bottom (VS Code style)
+  const nearBottom = outputEl.scrollHeight - outputEl.scrollTop - outputEl.clientHeight < 40;
+  const frag = document.createDocumentFragment();
+  for (const [text, cls] of outputQueue) {
+    const span = document.createElement("span");
+    span.className = cls;
+    span.textContent = text;
+    frag.appendChild(span);
+  }
+  outputQueue = [];
+  outputEl.appendChild(frag);
+  // drop the oldest output beyond the cap
+  let over = outputEl.childElementCount - OUTPUT_MAX_SPANS;
+  while (over-- > 0 && outputEl.firstChild) outputEl.removeChild(outputEl.firstChild);
+  if (nearBottom) outputEl.scrollTop = outputEl.scrollHeight;
 }
 
 function clearOutput() {
+  outputQueue = [];
   outputEl.innerHTML = "";
 }
 
@@ -435,6 +468,7 @@ async function formatCurrent() {
 // ---------- file tree (VS Code style) ----------
 const expanded = new Set(); // normalized paths of expanded folders
 let sidebarWidth = 260;
+let selectedRow = null; // currently selected file row (avoids scanning the tree)
 
 const ICONS = {
   folderClosed: `<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#c79aff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 3.5c0-.6.4-1 1-1h3l1.2 1.4H13c.6 0 1 .4 1 1v5.6c0 .6-.4 1-1 1h-10.5c-.6 0-1-.4-1-1v-7z"/></svg>`,
@@ -559,8 +593,9 @@ function makeItem(item, parent) {
     e.stopPropagation();
     if (isDir) { toggleFolder(el, item.path); }
     else {
-      treeEl.querySelectorAll(".row").forEach((x) => x.classList.remove("selected"));
+      if (selectedRow) selectedRow.classList.remove("selected");
       row.classList.add("selected");
+      selectedRow = row;
       openFile(item.path);
     }
   };
@@ -691,6 +726,7 @@ async function promptNew(type, parentDir = null) {
 async function refreshTree() {
   if (!workspace) return;
   treeEl.innerHTML = "";
+  selectedRow = null;
   try {
     const entries = await invoke("list_dir", { path: workspace });
     entries.sort(compareEntries);
@@ -759,9 +795,29 @@ function toggleSidebar() {
   if (resizer) resizer.classList.toggle("hidden");
 }
 
-// registered in the capture phase so these win over CodeMirror's own keymap
+// Global shortcuts, registered in the capture phase so they win over
+// CodeMirror's own keymap. One listener covers all of them:
+//   Ctrl+B/J/=/-/0 — sidebar, clear output, font size (VS Code style)
+//   Alt+Z          — toggle word wrap
+//   Alt+Shift+F    — format document
 window.addEventListener("keydown", (e) => {
-  if (e.isComposing || e.altKey || (!e.ctrlKey && !e.metaKey)) return;
+  if (e.isComposing) return;
+  // Alt shortcuts (never with Ctrl/Meta)
+  if (e.altKey && !e.ctrlKey && !e.metaKey) {
+    const k = e.key.toLowerCase();
+    if (k === "z") {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleWrap();
+    } else if (k === "f" && e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      formatCurrent();
+    }
+    return;
+  }
+  // Ctrl/Cmd shortcuts
+  if (e.altKey || (!e.ctrlKey && !e.metaKey)) return;
   const key = e.key.toLowerCase(); // "+" / "-" / "=" unaffected; handles CapsLock
   let handled = true;
   if (key === "b") toggleSidebar();                                          // Ctrl+B — toggle sidebar
@@ -771,24 +827,6 @@ window.addEventListener("keydown", (e) => {
   else if (key === "0") resetFontScale();                                    // Ctrl+0 — reset font size
   else handled = false;
   if (handled) { e.preventDefault(); e.stopPropagation(); }
-}, true);
-
-// Alt+Z — toggle word wrap (VS Code convention)
-window.addEventListener("keydown", (e) => {
-  if (e.isComposing || !e.altKey || e.ctrlKey || e.metaKey) return;
-  if (e.key.toLowerCase() !== "z") return;
-  e.preventDefault();
-  e.stopPropagation();
-  toggleWrap();
-}, true);
-
-// Alt+Shift+F — format document (VS Code convention); formats without saving
-window.addEventListener("keydown", (e) => {
-  if (e.isComposing || !e.altKey || e.ctrlKey || e.metaKey) return;
-  if (e.key.toLowerCase() !== "f" || !e.shiftKey) return;
-  e.preventDefault();
-  e.stopPropagation();
-  formatCurrent();
 }, true);
 
 // ---------- init ----------

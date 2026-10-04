@@ -44,10 +44,40 @@ fn find_node() -> Option<PathBuf> {
             return Some(pb);
         }
     }
-    which::which("node").ok()
+    find_in_path("node")
 }
 
-#[tauri::command]
+/// Minimal `which`: scan `PATH` for an executable, honouring Windows extensions.
+fn find_in_path(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        if dir.as_os_str().is_empty() {
+            continue;
+        }
+        for candidate in candidates(&dir, name) {
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn candidates(dir: &std::path::Path, name: &str) -> Vec<PathBuf> {
+    if cfg!(windows) {
+        ["exe", "cmd", "bat"]
+            .iter()
+            .map(|ext| dir.join(format!("{name}.{ext}")))
+            .collect()
+    } else {
+        vec![dir.join(name)]
+    }
+}
+
+// #[tauri::command(async)] runs these on a worker thread instead of the
+// main thread, so file I/O and the `node --version` probe never block the UI.
+
+#[tauri::command(async)]
 fn node_status() -> NodeStatus {
     match find_node() {
         Some(p) => {
@@ -61,7 +91,7 @@ fn node_status() -> NodeStatus {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn run_js(
     app: tauri::AppHandle,
     path: String,
@@ -100,19 +130,35 @@ fn run_js(
     // Store handle so stop_js can kill it
     *proc.0.lock().unwrap() = Some(child);
 
-    let app2 = app.clone();
-    let app3 = app.clone();
+    // Output is channelled through one emitter thread that batches lines
+    // into a single event every ~50 ms or 64 kB. Emitting one IPC event per
+    // line floods the webview when a script prints in a tight loop.
+    let (tx, rx) = std::sync::mpsc::channel::<(u8, String)>();
+    let (tx_out, tx_err) = (tx.clone(), tx.clone());
+    drop(tx); // emitter exits when both readers are done and the queue drains
 
-    // stdout reader thread
     std::thread::spawn(move || {
         if let Some(p) = stdout_pipe {
-            let reader = BufReader::new(p);
-            for line in reader.lines() {
+            for line in BufReader::new(p).lines() {
                 match line {
                     Ok(l) => {
-                        let _ = app2.emit("run-output", serde_json::json!({
-                            "run_id": run_id, "stream": "stdout", "text": format!("{}\n", l)
-                        }));
+                        if tx_out.send((0, l)).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+    });
+    std::thread::spawn(move || {
+        if let Some(p) = stderr_pipe {
+            for line in BufReader::new(p).lines() {
+                match line {
+                    Ok(l) => {
+                        if tx_err.send((1, l)).is_err() {
+                            break;
+                        }
                     }
                     Err(_) => break,
                 }
@@ -120,21 +166,48 @@ fn run_js(
         }
     });
 
-    // stderr reader thread
+    let app_out = app.clone();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
     std::thread::spawn(move || {
-        if let Some(p) = stderr_pipe {
-            let reader = BufReader::new(p);
-            for line in reader.lines() {
-                match line {
-                    Ok(l) => {
-                        let _ = app3.emit("run-output", serde_json::json!({
-                            "run_id": run_id, "stream": "stderr", "text": format!("{}\n", l)
-                        }));
-                    }
-                    Err(_) => break,
+        const FLUSH_EVERY: std::time::Duration = std::time::Duration::from_millis(50);
+        const FLUSH_SIZE: usize = 64 * 1024;
+        let mut bufs: [String; 2] = [String::new(), String::new()];
+        let mut last_flush = Instant::now();
+        let flush = |bufs: &mut [String; 2]| {
+            for (i, name) in ["stdout", "stderr"].iter().enumerate() {
+                if bufs[i].is_empty() {
+                    continue;
+                }
+                let _ = app_out.emit("run-output", serde_json::json!({
+                    "run_id": run_id, "stream": name, "text": std::mem::take(&mut bufs[i])
+                }));
+            }
+        };
+        loop {
+            match rx.recv_timeout(FLUSH_EVERY) {
+                Ok((stream, line)) => {
+                    let buf = &mut bufs[stream as usize];
+                    buf.push_str(&line);
+                    buf.push('\n');
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    flush(&mut bufs);
+                    break;
                 }
             }
+            // Drain everything already queued so bursts don't become one event per line.
+            while let Ok((stream, line)) = rx.try_recv() {
+                let buf = &mut bufs[stream as usize];
+                buf.push_str(&line);
+                buf.push('\n');
+            }
+            if bufs[0].len() + bufs[1].len() >= FLUSH_SIZE || last_flush.elapsed() >= FLUSH_EVERY {
+                flush(&mut bufs);
+                last_flush = Instant::now();
+            }
         }
+        let _ = done_tx.send(());
     });
 
     // watcher thread: timeout + exit event
@@ -178,6 +251,12 @@ fn run_js(
             }
         }
 
+        // All run-output events are batched, so wait (bounded) for the
+        // emitter to finish draining before announcing the exit — otherwise
+        // trailing output could render after "Exited with code …". The cap
+        // covers a grandchild holding the pipes open forever.
+        let _ = done_rx.recv_timeout(std::time::Duration::from_millis(500));
+
         let _ = app.emit("run-exit", RunExited {
             run_id,
             code,
@@ -189,7 +268,7 @@ fn run_js(
     Ok(run_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn stop_js(proc: State<ProcHandle>) -> Result<(), String> {
     let mut guard = proc.0.lock().unwrap();
     if let Some(mut child) = guard.take() {
@@ -200,12 +279,12 @@ fn stop_js(proc: State<ProcHandle>) -> Result<(), String> {
 }
 
 // ---------- fs commands ----------
-#[tauri::command]
+#[tauri::command(async)]
 fn read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn write_file(path: String, content: String) -> Result<(), String> {
     if let Some(parent) = std::path::Path::new(&path).parent() {
         let _ = fs::create_dir_all(parent);
@@ -213,7 +292,7 @@ fn write_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, content).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_file(path: String) -> Result<(), String> {
     if std::path::Path::new(&path).exists() {
         return Err("File already exists".into());
@@ -221,7 +300,7 @@ fn create_file(path: String) -> Result<(), String> {
     fs::write(&path, "").map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_folder(path: String) -> Result<(), String> {
     if std::path::Path::new(&path).exists() {
         return Err("Folder already exists".into());
@@ -229,7 +308,7 @@ fn create_folder(path: String) -> Result<(), String> {
     fs::create_dir_all(&path).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn rename_entry(old_path: String, new_path: String) -> Result<(), String> {
     if std::path::Path::new(&new_path).exists() {
         return Err("Target already exists".into());
@@ -237,7 +316,7 @@ fn rename_entry(old_path: String, new_path: String) -> Result<(), String> {
     fs::rename(&old_path, &new_path).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_entry(path: String) -> Result<(), String> {
     let p = std::path::Path::new(&path);
     if p.is_dir() {
@@ -247,7 +326,7 @@ fn delete_entry(path: String) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_dir(path: String) -> Result<Vec<Entry>, String> {
     let mut entries: Vec<Entry> = Vec::new();
     for entry in fs::read_dir(&path).map_err(|e| e.to_string())? {
@@ -293,7 +372,7 @@ fn read_config() -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_workspace() -> Result<String, String> {
     let cfg = read_config();
     Ok(cfg
@@ -303,7 +382,7 @@ fn get_workspace() -> Result<String, String> {
         .to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_workspace(path: String) -> Result<(), String> {
     let dir = config_path();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -320,7 +399,7 @@ fn get_config_path() -> String {
     config_path().display().to_string()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn save_session(open_files: Vec<String>, active_file: String) -> Result<(), String> {
     let dir = config_path();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -334,12 +413,14 @@ fn save_session(open_files: Vec<String>, active_file: String) -> Result<(), Stri
     fs::write(p, serde_json::to_string_pretty(&cfg).unwrap()).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_session() -> Result<serde_json::Value, String> {
     Ok(read_config())
 }
 
-#[tauri::command]
+// Blocks until the picker closes — async keeps the main thread free so the
+// webview stays responsive behind the native dialog.
+#[tauri::command(async)]
 fn open_workspace_dialog(app: tauri::AppHandle) -> Result<String, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = std::sync::mpsc::channel();
